@@ -3,6 +3,13 @@
 
 #include"volume.h"
 
+struct segment
+{
+	int begin;
+	int stop;
+	int duration;
+};
+
 int frameSize = 256;
 int overlap = 128;
 int frameCount = 0;
@@ -10,6 +17,15 @@ int frameCount = 0;
 double **out;
 double *out_sub;
 double *volume;
+
+double volMin;
+double volMax;
+double volTh;
+
+int volRatio=10;
+int index=0;
+
+//volTh=(volMax-volMin)/epdParam.volRatio+volMin;
 
 void swap(double *x, double *y)
 {
@@ -67,16 +83,18 @@ double median(double *ptr, int size)
 {
         double *q = (double *)malloc((size+1)*sizeof(double *));
         int i=0;
+        int middle = size/2 + 1;
+        double average;
 
         //clone
         for (i=1; i<=size; i++)
                 q[i] = ptr[i];
 
         QuickSort(q, 1, size);
-	
-        int middle = size/2 + 1;
-        
-        double average;
+
+	 //record
+	 volMin = q[index];
+	 volMax = q[size-index+1];
 
         if (size % 2 ==0)
 	{
@@ -145,37 +163,24 @@ void frame2volume(double **frameMat, int usePolyfit)
 	}
 }
 
+void segmentFind(double *v, int size, int volTh)
+{
+	int i=0;
+	
+
+}
+
 void epdByVol()
 {
-/*
-
-y = double(y);                    % convert to double data type
-frameMat=buffer2(y, frameSize, overlap);    % frame blocking
-frameMat=frameZeroMean(frameMat, 2);        % zero justification
-frameNum=size(frameMat, 2);            % no. of frames
-volume=frame2volume(frameMat, 1);        % compute volume
-
-temp=sort(volume);
-index=round(frameNum/32); if index==0, index=1; end
-volMin=temp(index);
-volMax=temp(frameNum-index+1);            % To avoid unvoiced sounds
-volTh=(volMax-volMin)/epdParam.volRatio+volMin;    % compute volume threshold
-
-soundSegment=segmentFind(volume>volTh);
-*/
-
-        buffer2(voice, frameSize,  overlap, 16896);
-        frame2volume(out, 0);
+       buffer2(voice, frameSize,  overlap, 16896);
+	index = round(frameCount/32);
+       frame2volume(out, 0);
+	volTh = (volMax-volMin)/volRatio+volMin;
 }
 
 int main(void)
 {
 	int i, j;
-
-	
-		
-	buffer2(voice, frameSize,  overlap, 16896);
-	frame2volume(out, 0);
 
 
 	//frame: free
