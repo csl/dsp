@@ -8,11 +8,16 @@ struct segment
 	int begin;
 	int stop;
 	int duration;
+	struct segment *prv;
+	struct segment *next;
 };
 
-int frameSize = 256;
-int overlap = 128;
+int frameSize = 512;
+int overlap = 0;
 int frameCount = 0;
+int minSegment = 0;
+double dminSegment = 0.05;
+int volRatio = 10;
 
 double **out;
 double *out_sub;
@@ -22,10 +27,10 @@ double volMin;
 double volMax;
 double volTh;
 
-int volRatio=10;
 int index=0;
 
-//volTh=(volMax-volMin)/epdParam.volRatio+volMin;
+struct segment *sp;
+struct segment *current_sp = 0;
 
 void swap(double *x, double *y)
 {
@@ -163,25 +168,121 @@ void frame2volume(double **frameMat, int usePolyfit)
 	}
 }
 
-void segmentFind(double *v, int size, int volTh)
+void segmentFind(double *v, int size, double volTh)
 {
 	int i=0;
-	
+	int start_flag=0;
+	int duration = 0;
 
+	sp = (struct segment *) malloc(1*sizeof(struct segment));
+	current_sp = sp->next;
+
+	for (i=1; i<=size; i++)
+	{
+		if (v[i] > volTh && !start_flag)
+		{
+			start_flag=i;
+		}
+		else if (v[i] <= volTh && start_flag != 0)
+		{
+			duration = i - start_flag + 1;
+			//skip
+			if (duration <= minSegment) 
+			{
+				start_flag=0;
+				continue;
+			}
+			else
+			{
+			     if (!current_sp)
+			     {
+				sp = (struct segment *) malloc(1*sizeof(struct segment));
+				current_sp = sp;
+				sp->prv=0;
+			     }
+			     else
+			     {
+			        current_sp->next = 
+ 				    (struct segment *) malloc(1*sizeof(struct segment));
+				struct segment *sg = current_sp;			
+			   	current_sp = current_sp->next;
+				current_sp->prv = sg;
+				current_sp->next = 0;
+			     }	
+			     printf("begin %d, stop %d, duration %d\n", 
+							start_flag, i-1 , duration);
+			     current_sp->begin = start_flag;
+			     current_sp->stop = i-1;
+			     current_sp->duration = duration;
+			     start_flag=0;
+			}				
+		}
+	}
+	
 }
 
-void epdByVol()
+double getVolumVolTh(double *v ,int size)
 {
-       buffer2(voice, frameSize,  overlap, 16896);
+	double *q = (double *)malloc((size+1)*sizeof(double *));
+	int i=1;
+
+	for (i=1; i<=size; i++)
+	{
+		q[i] = v[i];
+	}
+
+	QuickSort(q, 1, size);
+	
 	index = round(frameCount/32);
-       frame2volume(out, 0);
-	volTh = (volMax-volMin)/volRatio+volMin;
+        volMin = q[index];
+        volMax = q[size-index+1];
+
+	printf("volMin=%f, volMax=%f\n", volMin, volMax);
+
+	return (volMax-volMin)/volRatio+volMin;
+}
+
+
+void epdByVol(int fs)
+{
+	buffer2(voice, frameSize,  overlap, 16896);	
+	minSegment= round( dminSegment*fs / (frameSize-overlap) );
+	frame2volume(out, 0);
+
+	volTh = getVolumVolTh(volume, frameCount);
+	printf("minSegment = %d, volTh = %f\n", minSegment, volTh);
+	segmentFind(volume, frameCount, volTh);
 }
 
 int main(void)
 {
 	int i, j;
+	struct segment *free_sp;
 
+	FILE *fp = fopen("out.txt","w");
+
+	epdByVol(8000);
+	
+	for (; sp->next != 0;)
+        {
+	    for(i=sp->begin; i<=sp->stop; i++)
+	    {
+		for (j=1; j<= frameSize; j++)
+		{
+			fprintf(fp, "%5.5f\n", out[i][j]);			
+		}
+	    }
+            sp = sp->next;
+        }
+
+	fclose(fp);
+	//free: segment
+	for (; current_sp->prv != 0;)
+        {
+		free_sp = current_sp;
+                current_sp = current_sp->prv;
+		free(free_sp);
+        }
 
 	//frame: free
 	for (i=1; i<=frameCount; i++)
