@@ -1,0 +1,24 @@
+Setup CCStudio v4.0
+
+family和platform的選單
+family選c64xx
+platform是選simulator
+
+c6416 Device Cycle Accurate Simulator
+
+Project -> 選New -> 打上 Project name -> 就開新的project ->
+
+然後程式的昨上方有file選項 -> 選New ->  ­Source file -> 選Source file
+
+manager -> right key -> add files  to project
+
+你再libraries按右鍵add files to project
+
+Library 應該是在C:\CCStudio_v3.1\C6000\cgtools\lib
+
+選rts6400.lib
+
+exec:
+
+file->load program->在debug資料夾內->因該有個.out黨
+
