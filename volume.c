@@ -12,7 +12,7 @@ struct segment
 	struct segment *next;
 };
 
-
+//#define frameSize 512
 int frameSize = 512;
 int overlap = 0;
 int frameCount = 0;
@@ -28,6 +28,8 @@ double volMax;
 double volTh;
 
 int index=0;
+
+double q[513];
 
 struct segment *sp;
 struct segment *current_sp = 0;
@@ -92,7 +94,6 @@ double median(double *ptr, int size)
         int i=0;
         int middle = size/2 + 1;
         double average;
-        double q[513];
 
         //clone
         for (i=1; i<=frameSize; i++)
@@ -149,7 +150,7 @@ void frame2volume(double **frameMat, int usePolyfit)
 {
 
 	int i=0, j=0;
-	double frame[frameSize+1];
+	double frame[513];
 	double sum=0;
 	double med;
 
@@ -157,7 +158,7 @@ void frame2volume(double **frameMat, int usePolyfit)
 
 	for (i=1; i<=frameCount; i++)
 	{
-		med = median(frameMat[i], frameSize);
+		//med = median(frameMat[i], frameSize);
 		for (j=1; j<=frameSize; j++)
 		{
 			frame[j] = frameMat[i][j] - med;
