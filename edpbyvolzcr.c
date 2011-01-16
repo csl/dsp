@@ -12,7 +12,6 @@ struct segment
 	struct segment *next;
 };
 
-
 int frameSize = 512;
 int overlap = 0;
 int frameCount = 0;
@@ -20,7 +19,10 @@ int minSegment = 0;
 double dminSegment = 0.05;
 int volRatio = 10;
 
+double shiftAmount;
+
 double **out;
+double *out_sub;
 double *volume;
 
 double volMin;
@@ -31,11 +33,6 @@ int index=0;
 
 struct segment *sp;
 struct segment *current_sp = 0;
-
-int myround(double number)
-{
-    return (number >= 0) ? (int)(number + 0.5) : (int)(number - 0.5);
-}
 
 void swap(double *x, double *y)
 {
@@ -54,6 +51,8 @@ double mean(double *data, int size)
         {
                 sum = sum + data[i] ;
         }
+
+	printf("%10.10f\n",sum);
 
         return (double) sum/(double) size;
 }
@@ -89,18 +88,20 @@ int Pation(double *A, int p, int r )
 
 double median(double *ptr, int size)
 {
+        double *q = (double *)malloc((size+1)*sizeof(double *));
         int i=0;
         int middle = size/2 + 1;
         double average;
-        double q[513];
 
         //clone
-        for (i=1; i<=frameSize; i++)
-	 {
+        for (i=1; i<=size; i++)
                 q[i] = ptr[i];
-	 }
 
-        QuickSort(q, 1, frameSize);
+        QuickSort(q, 1, size);
+
+	 //record
+	 volMin = q[index];
+	 volMax = q[size-index+1];
 
         if (size % 2 ==0)
 	{
@@ -110,6 +111,8 @@ double median(double *ptr, int size)
 	{
                 average = q[middle];
 	}
+
+        free(q);
         
         return average;
 }
@@ -118,18 +121,20 @@ void buffer2(double *wave, int frameSize, int overlap, int wave_size)
 {
 	int i=0, j=0, k=0;
 	int step = frameSize-overlap;
-	int startIndex;
-
 	frameCount = floor((wave_size-overlap)/step);
+	double **out_sub;
+
 	printf("step=%d, frameCount=%d\n", step, frameCount);
+
 	//create matrix
 	out = (double **) malloc((frameCount+1)*sizeof(double *)); 
 
 	for (i=1; i<=frameCount; i++)
 	{
-		out[i] = (double*) malloc((frameCount+1)*(frameSize+1)*sizeof(double));
-		startIndex = (i-1)*step+1;
-		for (k=1,j=startIndex; j<=startIndex+frameSize-1; j++)
+		int startIndex = (i-1)*step+1;
+		out[i] = (double*) malloc((frameCount+1)*(frameSize)*sizeof(double));
+		k=1;
+		for (j=	startIndex; j<=startIndex+frameSize-1; j++)
 		{
 			out[i][k] = wave[j];
 			k++;
@@ -147,25 +152,22 @@ void buffer2(double *wave, int frameSize, int overlap, int wave_size)
 
 void frame2volume(double **frameMat, int usePolyfit)
 {
-
 	int i=0, j=0;
-	double frame[frameSize+1];
+	double *frame = (double *)malloc((frameSize+1)*sizeof(double *));
 	double sum=0;
-	double med;
 
 	volume = (double *)malloc((frameCount+1)*sizeof(double *));
 
 	for (i=1; i<=frameCount; i++)
 	{
-		med = median(frameMat[i], frameSize);
+		double med = median(frameMat[i], frameSize);
+
 		for (j=1; j<=frameSize; j++)
 		{
 			frame[j] = frameMat[i][j] - med;
 			volume[i] = volume[i] + fabs(frame[j]);
 		}
 	}
-
-	//free(frame);
 }
 
 void segmentFind(double *v, int size, double volTh)
@@ -173,9 +175,10 @@ void segmentFind(double *v, int size, double volTh)
 	int i=0;
 	int start_flag=0;
 	int duration = 0;
-	struct segment *sg;
 
-	printf("segmentFind\n");
+	sp = (struct segment *) malloc(1*sizeof(struct segment));
+	current_sp = sp->next;
+
 	for (i=1; i<=size; i++)
 	{
 		if (v[i] > volTh && !start_flag)
@@ -196,94 +199,207 @@ void segmentFind(double *v, int size, double volTh)
 			     if (!current_sp)
 			     {
 				sp = (struct segment *) malloc(1*sizeof(struct segment));
-				sp->prv=0;
 				current_sp = sp;
-				sp->next=0;
+				sp->prv=0;
 			     }
 			     else
 			     {
-				sg = current_sp;
-			
-				//create new node
-			       current_sp->next = 
+			        current_sp->next = 
  				    (struct segment *) malloc(1*sizeof(struct segment));
+				struct segment *sg = current_sp;			
 			   	current_sp = current_sp->next;
 				current_sp->prv = sg;
 				current_sp->next = 0;
 			     }	
 			     printf("begin %d, stop %d, duration %d\n", 
 							start_flag, i-1 , duration);
-
 			     current_sp->begin = start_flag;
 			     current_sp->stop = i-1;
 			     current_sp->duration = duration;
 			     start_flag=0;
 			}				
 		}
-	}	
+	}
+	
 }
 
-double getVolumVolTh(double *v ,int size)
+double getVolumVolTh(double *v ,int size, int Ratio)
 {
-	double q[513];
+	double *q = (double *)malloc((size+1)*sizeof(double *));
 	int i=1;
 
-	for (i=1; i<=frameSize; i++)
+	for (i=1; i<=size; i++)
 	{
 		q[i] = v[i];
 	}
 
-	QuickSort(q, 1, frameSize);
+	QuickSort(q, 1, size);
 	
-	 index = myround(frameCount/32);
-        volMin = q[index];
-        volMax = q[frameSize-index+1];
+	index = round(frameCount/32);
+       volMin = q[index];
+       volMax = q[size-index+1];
 
 	printf("volMin=%f, volMax=%f\n", volMin, volMax);
 
-	return (volMax-volMin)/volRatio+volMin;
+	return (volMax-volMin)/Ratio+volMin;
+}
+
+int getVectorMinIndex(double *t, int size)
+{
+	double min;
+	int index = 1;
+	int i=0;
+
+	min = t[1];
+	for (i=2; i<=size;i++)
+	{
+		if (t[i] < min )
+		{
+			index = min;
+		}
+	}
+
+	return index;
+}
+
+void frame2zcr(double **frameMat, int method, double doubleshiftAmount)
+{
+	int i=1, j=1;
+	double *zcr = (double *)malloc((frameCount+1)*sizeof(double));
+	double *frame = = (double *)malloc((frameSize+1)*sizeof(double));;
+
+	//for i=1:frameNum
+	//	frameMat(:,i)=frameMat(:,i)-round(mean(frameMat(:,i)));
+	//end
+
+	for(i=1; i<= frameCount; i++)
+	{
+		for (j=1; j<=frameSize; j++)
+		{
+			frameMat[i][j] = frameMat[i][j]-round(mean(frameMat[i][j], frameSize))
+		}	
+	}
+
+	switch (method)
+	{
+        //for i=1:frameNum
+          //   frame=frameMat(:, i)-shiftAmount;
+         // zcr(i)=sum(frame(1:end-1).*frame(2:end)<0);    % signals at zero do not count for zcr
+         //end
+		case 1:
+
+			break;
+		case 2:
+			for(i=1; i<= frameCount; i++)
+			{
+				for (j=1; j<=frameSize; j++)
+				{
+				frame[i] = frameMat[i][j]-round(mean(frameMat[i][j], frameSize))
+				}	
+			}
+			
+i\			break;
+
+	}
+
+
+/*
+switch method
+     case 1
+     case 2
+         for i=1:frameNum
+             frame=frameMat(:, i)-shiftAmount;
+             zcr(i)=sum(frame(1:end-1).*frame(2:end)<=0);    % signals at zero do count for zcr
+         end
+     otherwise
+         error('Unknown method!');
+end
+*/
+
 }
 
 
-void epdByVol(int fs)
+
+
+void epdByVolzcr(int fs)
 {
+	int index;
+	int max = 0, value = 0;
+
 	buffer2(voice, frameSize,  overlap, 16896);	
-	minSegment= myround( dminSegment*fs / (frameSize-overlap) );
+	minSegment= round( dminSegment*fs / (frameSize-overlap) );
 	frame2volume(out, 0);
 
-	volTh = getVolumVolTh(volume, frameCount);
+	volTh = getVolumVolTh(volume, frameCount, volRatio);
 	printf("minSegment = %d, volTh = %f\n", minSegment, volTh);
-	segmentFind(volume, frameCount, volTh);
+
+	index = getVectorMinIndex(volume, frameCount);
+	//max(abs(frameMat(:,index)));
+	for (i=1; i<=frameSize; i++)
+	{
+		value = abs(out[index][i]);
+		if (value > max)
+		{
+			max = value;
+		}
+	}
+	shiftAmount = epdParam.zcrShiftGain * max;
+	//shiftAmount=max(shiftAmount, 2);    
+
+	
+/*
+[minVol, index]=min(volume);
+shiftAmount=epdParam.zcrShiftGain*max(abs(frameMat(:,index)));        % shiftAmount is equal to epdParam.zcrShiftGain times the max. abs. sample within the frame of min. volume
+shiftAmount=max(shiftAmount, 2);    
+zcr=frame2zcr(frameMat, 1, shiftAmount);
+zcrTh=max(zcr)*epdParam.zcrRatio;
+*/
+	//% ====== Compute ZCR
+
+	shiftAmount=epdParam.zcrShiftGain * max(abs(frameMat(:,index)));
+	//segmentFind(volume, frameCount, volTh);
+	
+
+         
 }
 
 int main(void)
 {
 	int i, j;
 	struct segment *free_sp;
-	epdByVol(8000);
 
+	FILE *fp = fopen("out.txt","w");
+
+	epdByVolzcr(8000);
+	
 	for (; sp->next != 0;)
         {
 	    for(i=sp->begin; i<=sp->stop; i++)
 	    {
 		for (j=1; j<= frameSize; j++)
 		{
-			printf("%5.5f\n", out[i][j]);			
+			fprintf(fp, "%5.5f\n", out[i][j]);			
 		}
 	    }
-	     free_sp = sp;
             sp = sp->next;
-	     free(free_sp);
         }
+
+	fclose(fp);
+	//free: segment
+	for (; current_sp->prv != 0;)
+        {
+		free_sp = current_sp;
+                current_sp = current_sp->prv;
+		free(free_sp);
+        }
+
 	//frame: free
 	for (i=1; i<=frameCount; i++)
         {
                 free(out[i]);
         }
-     
-       free(out);
+        free(out);
 	free(volume);
 
-	printf("finish.\n");
 	return 0;
 }
